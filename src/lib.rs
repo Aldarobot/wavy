@@ -15,9 +15,12 @@
 //! Depending on the platform, it may run on a separate thread.  When dealing
 //! with real-time audio, it is important to make your code real-time safe
 //! (avoid unbounded-time operations, such as syscalls).  Communicating between
-//! threads is often not real-time safe, but can be using [`DualQueue`].
+//! threads is often not real-time safe, but can be using [`QueueSender`] and
+//! [`QueueReceiver`].
 //!
 //! # Getting Started
+
+use std::future::Future;
 
 use event_iterator::EventIterator;
 use fon::{Audio, Frame};
@@ -56,16 +59,27 @@ pub struct MicrophoneStream {}
 pub struct SpeakersSink {}
 
 /// [`EventIterator`] of [`Microphone`]
-pub struct MicrophoneSearcher<T = DefaultAudioConfig> {
+pub struct MicrophoneFinder<T = DefaultAudioConfig> {
     audio_config: T,
 }
 
 /// [`EventIterator`] of [`Speakers`]
-pub struct SpeakersSearcher<T = DefaultAudioConfig> {
+pub struct SpeakersFinder<T = DefaultAudioConfig> {
     audio_config: T,
 }
 
-/// [`EventIterator`] to real-time share data between async executors
-pub struct DualQueue<T> {
+/// [`EventIterator`] to send data to another async executor
+pub struct QueueSender<T, const N: usize = DEFAULT_CHUNKS> {
     t: T
+}
+
+/// [`EventIterator`] to receive data from another async executor
+pub struct QueueReceiver<T, const N: usize = DEFAULT_CHUNKS> {
+    t: T
+}
+
+/// Send a single-threaded future to the audio executor
+pub fn spawn_audio_task<F>(f: impl FnOnce() -> F + Send)
+where F: Future<Output = ()>
+{
 }
