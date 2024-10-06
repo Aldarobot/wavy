@@ -1,124 +1,71 @@
-// Copyright © 2019-2022 The Wavy Contributors.
-//
-// Licensed under any of:
-// - Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
-// - Boost Software License, Version 1.0 (https://www.boost.org/LICENSE_1_0.txt)
-// - MIT License (https://mit-license.org/)
-// At your choosing (See accompanying files LICENSE_APACHE_2_0.txt,
-// LICENSE_MIT.txt and LICENSE_BOOST_1_0.txt).
-//
-//! Asynchronous cross-platform real-time audio recording &amp; playback.
+//! The sound waves are _so_ wavy!
+//!
+//! # About
+//!
+//! Wavy is a library for asynchronous cross-platform real-time audio recording
+//! & playback.  This library is great for if you need low-latency sound effects
+//! in video games, if you're making a multi-media player, Digital Audio
+//! Workstation, or building a synthesizer; anything that needs access to
+//! speakers or microphones.
+//!
+//! ## How it works
+//!
+//! Wavy starts up an dedicated single-threaded async executor for audio, where
+//! you can run futures dealing directly with recording or playing audio.
+//! Depending on the platform, it may run on a separate thread.  When dealing
+//! with real-time audio, it is important to make your code real-time safe
+//! (avoid unbounded-time operations, such as syscalls).  Communicating between
+//! threads is often not real-time safe, but can be using [`DualQueue`].
 //!
 //! # Getting Started
-//! Add the following to your *Cargo.toml*:
-//!
-//! ```toml
-//! [dependencies]
-//! pasts = "0.12"
-//! wavy = "0.10"
-//! fon = "0.5"
-//! ```
-//!
-//! This example records audio and plays it back in real time as it's being
-//! recorded.  (Make sure to wear headphones to avoid feedback):
-//!
-//! ```rust
-//! use fon::{mono::Mono32, Audio, Sink};
-//! use pasts::{prelude::*, Join};
-//! use wavy::{Microphone, MicrophoneStream, Speakers, SpeakersSink};
-//!
-//! /// Shared state between tasks on the thread.
-//! struct App {
-//!     /// Handle to speakers
-//!     speakers: Speakers<1>,
-//!     /// Handle to the microphone
-//!     microphone: Microphone<1>,
-//!     /// Temporary buffer for holding real-time audio samples.
-//!     buffer: Audio<Mono32>,
-//! }
-//!
-//! impl App {
-//!     /// Speaker is ready to play more audio.
-//!     fn play(&mut self, mut sink: SpeakersSink<Mono32>) -> Poll<()> {
-//!         sink.stream(self.buffer.drain());
-//!         Pending
-//!     }
-//!
-//!     /// Microphone has recorded some audio.
-//!     fn record(&mut self, stream: MicrophoneStream<Mono32>) -> Poll<()> {
-//!         self.buffer.extend(stream);
-//!         Pending
-//!     }
-//!
-//!     /// Program start.
-//!     async fn main(_executor: Executor) {
-//!         let speakers = Speakers::default();
-//!         let microphone = Microphone::default();
-//!         let buffer = Audio::with_silence(48_000, 0);
-//!         let mut app = App {
-//!             speakers,
-//!             microphone,
-//!             buffer,
-//!         };
-//!
-//!         Join::new(&mut app)
-//!             .on(|s| &mut s.speakers, App::play)
-//!             .on(|s| &mut s.microphone, App::record)
-//!             .await
-//!     }
-//! }
-//! ```
 
-#![doc(
-    html_logo_url = "https://ardaku.github.io/mm/logo.svg",
-    html_favicon_url = "https://ardaku.github.io/mm/icon.svg",
-    html_root_url = "https://docs.rs/wavy"
-)]
-#![deny(unsafe_code)]
-#![warn(
-    anonymous_parameters,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    missing_docs,
-    nonstandard_style,
-    rust_2018_idioms,
-    single_use_lifetimes,
-    trivial_casts,
-    trivial_numeric_casts,
-    unreachable_pub,
-    unused_extern_crates,
-    unused_qualifications,
-    variant_size_differences
-)]
+use event_iterator::EventIterator;
+use fon::{Audio, Frame};
 
-#[cfg_attr(target_arch = "wasm32", path = "ffi/wasm/ffi.rs")]
-#[cfg_attr(
-    not(target_arch = "wasm32"),
-    cfg_attr(target_os = "linux", path = "ffi/linux/ffi.rs"),
-    cfg_attr(target_os = "android", path = "ffi/android/ffi.rs"),
-    cfg_attr(target_os = "macos", path = "ffi/macos/ffi.rs"),
-    cfg_attr(target_os = "ios", path = "ffi/ios/ffi.rs"),
-    cfg_attr(target_os = "windows", path = "ffi/windows/ffi.rs"),
-    cfg_attr(
-        any(
-            target_os = "freebsd",
-            target_os = "dragonfly",
-            target_os = "bitrig",
-            target_os = "openbsd",
-            target_os = "netbsd"
-        ),
-        path = "ffi/bsd/ffi.rs"
-    ),
-    cfg_attr(target_os = "fuchsia", path = "ffi/fuchsia/ffi.rs"),
-    cfg_attr(target_os = "redox", path = "ffi/redox/ffi.rs"),
-    cfg_attr(target_os = "none", path = "ffi/none/ffi.rs"),
-    cfg_attr(target_os = "dummy", path = "ffi/dummy/ffi.rs")
-)]
-mod ffi;
+/// Default preferred sample rate for audio devices
+pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
+/// Default preferred number of chunks in the ring buffer
+pub const DEFAULT_CHUNKS: usize = 8;
+/// Default preferred number of frames in a chunk
+pub const DEFAULT_FRAMES: usize = 32;
 
-mod consts;
-mod microphone;
-mod speakers;
+/// Default preferred audio device configuration
+pub type DefaultAudioConfig = AudioConfig<
+    DEFAULT_SAMPLE_RATE,
+    DEFAULT_CHUNKS,
+    DEFAULT_FRAMES,
+>;
 
-pub use microphone::{Microphone, MicrophoneStream};
-pub use speakers::{Speakers, SpeakersSink};
+/// Configuration for an audio device
+pub struct AudioConfig<
+    const SAMPLE_RATE: u32,
+    const CHUNKS: usize,
+    const FRAMES: usize,
+>;
+
+/// [`EventIterator`] of [`MicrophoneStream`]
+pub struct Microphone {}
+
+/// [`EventIterator`] of [`SpeakersSink`]
+pub struct Speakers {}
+
+/// Chunked stream of recorded audio
+pub struct MicrophoneStream {}
+
+/// Chunked sink for audio playback
+pub struct SpeakersSink {}
+
+/// [`EventIterator`] of [`Microphone`]
+pub struct MicrophoneSearcher<T = DefaultAudioConfig> {
+    audio_config: T,
+}
+
+/// [`EventIterator`] of [`Speakers`]
+pub struct SpeakersSearcher<T = DefaultAudioConfig> {
+    audio_config: T,
+}
+
+/// [`EventIterator`] to real-time share data between async executors
+pub struct DualQueue<T> {
+    t: T
+}

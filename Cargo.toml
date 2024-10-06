@@ -26,16 +26,22 @@ keywords = ["audio", "realtime", "cross-platform", "record", "play"]
 readme = "README.md"
 edition = "2021"
 
+# [dependencies]
+# alsa = "0.9.1"
+
 # For all platforms
+[dependencies.event_iterator]
+version = "0.2.2"
+
 [dependencies.fon]
-version = "0.5"
+version = "0.6.0"
 
 [dependencies.pasts]
-version = "0.12"
+version = "0.14.3"
 
 # For Linux and Android
 [target.'cfg(all(not(target_arch = "wasm32"), any(target_os = "linux", target_os = "android")))'.dependencies]
-smelling_salts = "0.2"
+smelling_salts = "0.12"
 dl_api = "0.4"
 
 # For Web Assembly
@@ -59,7 +65,3 @@ features = [
 ]
 [target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen]
 version = "0.2"
-
-# Examples
-[dev-dependencies]
-twang = "0.7"
